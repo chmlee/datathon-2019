@@ -1,0 +1,179 @@
+```{r}
+library(quantmod)
+library(TTR)
+
+library(tidytext)
+
+library(dplyr)
+library(ggplot2)
+
+	
+library(plyr)
+library(reshape2)
+
+library(gtrendsR)
+
+```
+
+# merge four dataset
+```{r}
+bay = read.csv("/home/cmlee/Documents/Datathon/Data/BAYZF.csv")
+hon = read.csv("/home/cmlee/Documents/Datathon/Data/HON.csv")
+mmm = read.csv("/home/cmlee/Documents/Datathon/Data/MMM.csv")
+syf = read.csv("/home/cmlee/Documents/Datathon/Data/SYF.csv")
+
+bay = bay[is.na(bay$Open) == F,]
+hon = hon[is.na(hon$Open) == F,]
+mmm = mmm[is.na(mmm$Open) == F,]
+syf = syf[is.na(syf$Open) == F,]
+
+dat = cbind(
+            c(rep("bay", nrow(bay)), 
+              rep("hon", nrow(hon)), 
+              rep("mmm", nrow(mmm)), 
+              rep("syf", nrow(syf))
+            ),
+            rbind(bay, hon, mmm, syf)
+            )
+names(dat)[1] = "firm"
+
+#rm(list = c("bay", "hon", "mmm", "syf"))
+```
+
+# convert date to quarters
+```{r}
+
+date = rep(NA, nrow(dat))
+
+date0 = dat1$Date %>% as.character() %>% strsplit("/")
+year = unlist(date0)[c(F,F,T)] %>% as.integer()
+month = unlist(date0)[c(T,F,F)] %>% as.integer()
+day = unlist(date0)[c(F,T,F)] %>% as.integer()
+
+quarter = (month + 1) %/% 3
+gdp_quarter = quarter
+gdp_quarter[quarter == 0] = 4
+gdp_year = year
+gdp_year[month == 1] = year[month == 1] - 1
+
+dat1 = cbind(dat, year, month, day, gdp_year, gdp_quarter)
+
+
+
+
+```
+
+# Add variable GDP
+Source https://fred.stlouisfed.org/series/GDPC1
+```{r}
+gdp = read.csv("/home/cmlee/Documents/Datathon/Data/GDP.csv")
+gdp1 = gdp
+gdp_date = gdp1$DATE %>% as.character() %>%  strsplit("-")
+
+
+gdp_year = unlist(gdp_date)[c(T,F,F)]
+gdp_month = unlist(gdp_date)[c(F,T,F)]
+gdp_day = unlist(gdp_date)[c(F,F,T)]
+gdp_quarter = (as.integer(gdp_month) + 1) %/% 3
+gdp_quarter[gdp_quarter == 0] = 4
+
+gdp2 = cbind(gdp1, gdp_year, gdp_month, gdp_quarter)
+
+gdp_col = rep(NA, nrow(dat2))
+
+for(i in 1:nrow(dat1)){
+  q = dat1$gdp_quarter[i]
+  y = dat1$gdp_year[i]
+  
+  if(y != 2018 | q < 2 ){
+    df = gdp2[grepl(q,gdp2$gdp_quarter) & grepl(y, gdp2$gdp_year),]
+  gdp_col[i] = df$GDPC1
+  }
+}
+
+dat2 = cbind(dat1, gdp_col)
+```
+
+# Recode firm into binary
+```{r}
+firm_1 = rep(0, nrow(dat2))
+firm_2 = rep(0, nrow(dat2))
+
+
+for(n in 1:nrow(dat2)){
+  firm = dat2$firm[n]
+  if(firm == "hon"){
+    firm_1[n] = 1
+  }
+  if(firm == "mmm"){
+    firm_2[n] = 1
+  }
+  if(firm == "syf"){
+    firm_1[n] = 1
+    firm_2[n] = 1
+  }
+}
+
+dat3 = cbind(dat2, firm_1, firm_2)
+
+dat4 = dat3[is.na(dat3$gdp_col) == F,]
+
+```
+
+# Anlysis 1
+
+$Adj.Close$ ~ $GDP$
+
+```{r}
+
+fit1 = lm(Adj.Close ~ gdp_col, dat4)
+fit1.1 = lm(Adj.Close ~ gdp_col + factor(firm_1) + factor(firm_2), dat4)
+fit1.2 = lm(Adj.Close ~ gdp_col * factor(firm_1) + gdp_col * factor(firm_2), dat4)
+
+
+
+plot1 = ggplot() +
+  geom_point(aes(x = gdp_col, y = Adj.Close, color = firm), dat4)
+```
+
+
+# Bayes
+```{r}
+library(tidytext)
+library(tidyverse)
+library(dplyr)
+library(purrr)
+library(readr)
+
+setwd("/home/cmlee/Documents/Datathon/Data/news/Bayers/")
+
+news_csv = read_file("/home/cmlee/Documents/Datathon/Data/news/Bayers.txt")
+news = news_csv[,1]
+
+news_1 = read.csv("/home/cmlee/Documents/Datathon/Data/news/Bayers/Bayers023.txt", header = F)
+text_1 = news_1[,1] %>% as.character()
+df_1 = tibble(line=1:length(text_1), text) %>% unnest_tokens(word, text)
+
+
+news_2 = read.csv("/home/cmlee/Documents/Datathon/Data/news/Bayers/Bayers023.txt", header = F)
+text_2 = news_2[,1] %>% as.character()
+df_2 = tibble(line=1:length(text_2), text) %>% unnest_tokens(word, text)
+
+
+
+```
+
+
+```{r}
+company <- c("Bayer", "Honeywell", "3M", "Synchrony")
+symbol <- c("BAY", "HON", "MMM", "SYF")
+
+download_articles <- function(symbol) {
+  WebCorpus(GoogleFinanceSource(paste0("NASDAQ:", symbol)))
+}
+
+stock_articles <- tibble(company = company,
+                             symbol = symbol) %>%
+  mutate(corpus = map(symbol, download_articles))
+
+```
